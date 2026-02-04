@@ -13,8 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Virtual Film Office - Admin Portal",
-  description: "Admin portal for managing courses, users, and content on the Virtual Film Office learning platform",
+  title: {
+    template: '%s | VFO Learner',
+    default: 'VFO Academy - Learner Portal',
+  },
+  description: "Comprehensive learning platform for film industry professionals. Access courses, track progress, and earn certificates.",
+  icons: {
+    icon: '/favicon-DNNrLImq.png',
+  },
 };
 
 export default function RootLayout({
