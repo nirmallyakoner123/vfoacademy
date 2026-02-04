@@ -268,7 +268,7 @@ export default function AssessmentsPage() {
       key: 'actions',
       header: '',
       width: '100px',
-      render: (assessment: Assessment) => (
+      render: () => (
         <div className="flex items-center gap-2">
           <button
             className="p-2 text-[var(--gray-500)] hover:text-[var(--primary-navy)] hover:bg-[var(--gray-100)] rounded-lg transition-colors"

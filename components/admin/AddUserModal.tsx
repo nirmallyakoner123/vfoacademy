@@ -6,10 +6,19 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { validateEmail } from '@/lib/validation';
 
+interface NewUser {
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  joinedDate: string;
+  lastActive: string;
+}
+
 interface AddUserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (user: any) => void;
+  onAdd: (user: NewUser) => void;
 }
 
 export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onAdd }) => {

@@ -122,6 +122,8 @@ const getLessonIcon = (type: string, completed: boolean) => {
 
 export default function CourseViewerPage() {
   const params = useParams();
+  // params will be used when fetching real course data
+  void params;
   const [expandedWeeks, setExpandedWeeks] = useState<string[]>(['week_1', 'week_2']);
   const [selectedLesson, setSelectedLesson] = useState<string | null>('lesson_7');
 

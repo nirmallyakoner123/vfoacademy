@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { AdminLayout } from '@/components/admin/AdminLayout';
+import React, { useState, useEffect, useId } from 'react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -9,7 +8,7 @@ import { Tabs } from '@/components/ui/Tabs';
 import { WeekAccordion } from '@/components/admin/WeekAccordion';
 import { AddWeekModal } from '@/components/admin/AddWeekModal';
 import { PropertiesPanel } from '@/components/admin/PropertiesPanel';
-import { Course, Week, Lesson, Asset, CourseStatus, Question, LessonType, AssessmentConfig } from '@/types/course';
+import { Course, Week, Lesson, Asset, Question, LessonType, AssessmentConfig } from '@/types/course';
 import { saveCourse, loadCourse } from '@/lib/storage';
 
 const defaultCourseSettings = {
@@ -21,45 +20,47 @@ const defaultCourseSettings = {
   downloadableResources: true,
 };
 
+const createInitialCourse = (id: string): Course => ({
+  id,
+  title: '',
+  subtitle: '',
+  description: '',
+  category: '',
+  tags: [],
+  level: 'All Levels',
+  language: 'English',
+  status: 'Draft',
+  instructors: [],
+  weeks: [
+    { id: 'week_1', title: 'Week 1', description: '', lessons: [], order: 1 },
+    { id: 'week_2', title: 'Week 2', description: '', lessons: [], order: 2 },
+    { id: 'week_3', title: 'Week 3', description: '', lessons: [], order: 3 },
+    { id: 'week_4', title: 'Week 4', description: '', lessons: [], order: 4 },
+  ],
+  settings: defaultCourseSettings,
+  learningObjectives: [],
+  prerequisites: [],
+  targetAudience: [],
+  estimatedDuration: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+
 export default function CourseCreatePage() {
-  const [course, setCourse] = useState<Course>({
-    id: 'course_' + Date.now(),
-    title: '',
-    subtitle: '',
-    description: '',
-    category: '',
-    tags: [],
-    level: 'All Levels',
-    language: 'English',
-    status: 'Draft',
-    instructors: [],
-    weeks: [
-      { id: 'week_1', title: 'Week 1', description: '', lessons: [], order: 1 },
-      { id: 'week_2', title: 'Week 2', description: '', lessons: [], order: 2 },
-      { id: 'week_3', title: 'Week 3', description: '', lessons: [], order: 3 },
-      { id: 'week_4', title: 'Week 4', description: '', lessons: [], order: 4 },
-    ],
-    settings: defaultCourseSettings,
-    learningObjectives: [],
-    prerequisites: [],
-    targetAudience: [],
-    estimatedDuration: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+  const uniqueId = useId();
+  const [course, setCourse] = useState<Course>(() => {
+    // Try to load from localStorage during initialization
+    if (typeof window !== 'undefined') {
+      const saved = loadCourse();
+      if (saved) return saved;
+    }
+    return createInitialCourse(`course_${uniqueId}`);
   });
   
   const [showAddWeekModal, setShowAddWeekModal] = useState(false);
   const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Load course from localStorage on mount
-  useEffect(() => {
-    const savedCourse = loadCourse();
-    if (savedCourse) {
-      setCourse(savedCourse);
-    }
-  }, []);
   
   // Auto-save to localStorage
   useEffect(() => {

@@ -22,6 +22,8 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
   initialConfig,
   weekTitle,
 }) => {
+  // weekTitle will be used for assessment naming suggestions
+  void weekTitle;
   const [config, setConfig] = useState<Partial<AssessmentConfig>>(
     initialConfig || {
       title: '',
@@ -454,7 +456,7 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {config.questions.map((question, index) => (
+                  {config.questions.map((question) => (
                     <div key={question.id} className="bg-white border border-[var(--gray-200)] rounded-xl p-4">
                       <div className="flex items-start gap-3">
                         <input type="checkbox" className="mt-1 w-4 h-4 rounded border-[var(--gray-300)]" />

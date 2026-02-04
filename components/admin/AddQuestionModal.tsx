@@ -57,7 +57,7 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
 
   const handleSave = () => {
     const question: Question = {
-      id: 'ques_' + Date.now(),
+      id: `ques_${crypto.randomUUID()}`,
       title,
       type: 'multiple-choice',
       difficulty,
@@ -127,7 +127,7 @@ export const AddQuestionModal: React.FC<AddQuestionModalProps> = ({
                   { label: 'Hard', value: 'Hard' },
                 ]}
                 value={difficulty}
-                onChange={(val) => setDifficulty(val as any)}
+                onChange={(val) => setDifficulty(val as 'Easy' | 'Medium' | 'Hard')}
                 required
               />
               <Input

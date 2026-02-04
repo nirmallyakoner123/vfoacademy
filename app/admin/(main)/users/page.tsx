@@ -76,7 +76,7 @@ export default function UsersPage() {
     return matchesTab && matchesSearch;
   });
 
-  const handleAddUser = (newUser: any) => {
+  const handleAddUser = (newUser: { name: string; email: string; role: string; status: string; joinedDate: string; lastActive: string }) => {
     const user = {
       id: users.length + 1,
       ...newUser,
