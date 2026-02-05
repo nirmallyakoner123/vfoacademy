@@ -8,9 +8,10 @@ import { UploadModal } from './UploadModal';
 
 interface LessonRowProps {
   lesson: Lesson;
+  courseId?: string;
   onDelete: () => void;
   onSelect: () => void;
-  onUpload: (fileName: string, fileType: 'video' | 'pdf') => void;
+  onUpload: (fileName: string, fileType: 'video' | 'pdf', file?: File, url?: string) => void;
   onConfigureAssessment?: () => void;
   isSelected: boolean;
 }
@@ -28,23 +29,44 @@ const getBadgeVariant = (type: LessonType): 'video' | 'pdf' | 'assessment' => {
   }
 };
 
-const getContentStatus = (lesson: Lesson): string => {
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+const getContentStatus = (lesson: Lesson): { text: string; hasContent: boolean; fileName?: string; fileSize?: number } => {
   if (lesson.type === 'Assessment') {
     if (lesson.assessment) {
       const questionCount = lesson.assessment.questions?.length || 0;
-      return questionCount > 0 
-        ? `${questionCount} question(s) • ${lesson.assessment.totalMarks} marks`
-        : 'Assessment configured • No questions yet';
+      return {
+        text: questionCount > 0 
+          ? `${questionCount} question(s) • ${lesson.assessment.totalMarks || 0} marks`
+          : 'Assessment configured • No questions yet',
+        hasContent: questionCount > 0,
+      };
     }
-    return 'Assessment not configured';
+    return { text: 'Assessment not configured', hasContent: false };
   }
-  return lesson.assets.length > 0 
-    ? `${lesson.assets.length} file(s) attached` 
-    : 'No content uploaded';
+  
+  if (lesson.assets && lesson.assets.length > 0) {
+    const latestAsset = lesson.assets[lesson.assets.length - 1];
+    return {
+      text: latestAsset.name,
+      hasContent: true,
+      fileName: latestAsset.name,
+      fileSize: latestAsset.size,
+    };
+  }
+  
+  return { text: 'No content uploaded', hasContent: false };
 };
 
 export const LessonRow: React.FC<LessonRowProps> = ({ 
   lesson, 
+  courseId,
   onDelete, 
   onSelect,
   onUpload,
@@ -54,6 +76,7 @@ export const LessonRow: React.FC<LessonRowProps> = ({
   const [showUploadModal, setShowUploadModal] = useState(false);
   
   const isAssessment = lesson.type === 'Assessment';
+  const contentStatus = getContentStatus(lesson);
   
   return (
     <>
@@ -81,10 +104,33 @@ export const LessonRow: React.FC<LessonRowProps> = ({
             <Badge variant={getBadgeVariant(lesson.type)}>
               {lesson.type}
             </Badge>
+            {contentStatus.hasContent && !isAssessment && (
+              <span className="flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Uploaded
+              </span>
+            )}
           </div>
-          <p className="text-sm text-[var(--gray-500)]">
-            {getContentStatus(lesson)}
-          </p>
+          <div className="flex items-center gap-2">
+            {contentStatus.hasContent && contentStatus.fileName ? (
+              <>
+                <span className="text-sm text-[var(--gray-600)] truncate max-w-[200px]" title={contentStatus.fileName}>
+                  {contentStatus.fileName}
+                </span>
+                {contentStatus.fileSize && contentStatus.fileSize > 0 && (
+                  <span className="text-xs text-[var(--gray-400)]">
+                    ({formatFileSize(contentStatus.fileSize)})
+                  </span>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-[var(--gray-500)]">
+                {contentStatus.text}
+              </p>
+            )}
+          </div>
         </div>
         
         {/* Actions */}
@@ -103,14 +149,25 @@ export const LessonRow: React.FC<LessonRowProps> = ({
             </Button>
           ) : (
             <Button
-              variant="outline"
+              variant={contentStatus.hasContent ? 'secondary' : 'outline'}
               size="sm"
               onClick={() => setShowUploadModal(true)}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              Upload
+              {contentStatus.hasContent ? (
+                <>
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Replace
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  Upload
+                </>
+              )}
             </Button>
           )}
           
@@ -132,6 +189,8 @@ export const LessonRow: React.FC<LessonRowProps> = ({
           onClose={() => setShowUploadModal(false)}
           onUpload={onUpload}
           lessonType={lesson.type}
+          courseId={courseId}
+          lessonId={lesson.id}
         />
       )}
     </>

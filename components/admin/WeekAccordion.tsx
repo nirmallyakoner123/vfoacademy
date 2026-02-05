@@ -10,10 +10,11 @@ import { AssessmentConfigModal } from './AssessmentConfigModal';
 
 interface WeekAccordionProps {
   week: Week;
+  courseId?: string;
   onAddLesson: (weekId: string, title: string, type: 'Video' | 'PDF' | 'Assessment') => void;
   onDeleteLesson: (weekId: string, lessonId: string) => void;
   onSelectLesson: (weekId: string, lessonId: string) => void;
-  onUploadContent: (weekId: string, lessonId: string, fileName: string, fileType: 'video' | 'pdf') => void;
+  onUploadContent: (weekId: string, lessonId: string, fileName: string, fileType: 'video' | 'pdf', file?: File, url?: string) => void;
   onConfigureAssessment: (weekId: string, lessonId: string, config: AssessmentConfig) => void;
   onSelectWeek: (weekId: string) => void;
   selectedLessonId: string | null;
@@ -21,6 +22,7 @@ interface WeekAccordionProps {
 
 export const WeekAccordion: React.FC<WeekAccordionProps> = ({
   week,
+  courseId,
   onAddLesson,
   onDeleteLesson,
   onSelectLesson,
@@ -89,7 +91,7 @@ export const WeekAccordion: React.FC<WeekAccordionProps> = ({
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  Add Test
+                  Add Final Test
                 </Button>
               </div>
             </div>
@@ -99,9 +101,10 @@ export const WeekAccordion: React.FC<WeekAccordionProps> = ({
                 <LessonRow
                   key={lesson.id}
                   lesson={lesson}
+                  courseId={courseId}
                   onDelete={() => onDeleteLesson(week.id, lesson.id)}
                   onSelect={() => onSelectLesson(week.id, lesson.id)}
-                  onUpload={(fileName, fileType) => onUploadContent(week.id, lesson.id, fileName, fileType)}
+                  onUpload={(fileName, fileType, file, url) => onUploadContent(week.id, lesson.id, fileName, fileType, file, url)}
                   onConfigureAssessment={() => handleConfigureAssessment(lesson.id)}
                   isSelected={selectedLessonId === lesson.id}
                 />
@@ -128,7 +131,7 @@ export const WeekAccordion: React.FC<WeekAccordionProps> = ({
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  Add Test
+                  Add Final Test
                 </Button>
               </div>
             </>
@@ -143,6 +146,7 @@ export const WeekAccordion: React.FC<WeekAccordionProps> = ({
       />
 
       <AssessmentConfigModal
+        key={`assessment-modal-${selectedAssessmentLessonId || 'none'}-${selectedAssessmentLesson?.assessment?.questions?.length || 0}`}
         isOpen={showAssessmentModal}
         onClose={() => {
           setShowAssessmentModal(false);

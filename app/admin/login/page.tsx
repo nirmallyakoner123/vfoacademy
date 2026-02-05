@@ -1,19 +1,26 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { validateEmail, validatePassword } from '@/lib/validation';
+import { supabase } from '@/lib/supabase/client';
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState({ email: '', password: '', general: '' });
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const isMounted = useRef(true);
+  
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,25 +44,118 @@ export default function AdminLoginPage() {
       return;
     }
     
-    // Mock login
     setIsLoading(true);
     
-    setTimeout(() => {
-      // Mock authentication - accept any valid email/password
-      if (email && password) {
-        // Store auth token (mock)
-        if (rememberMe) {
-          localStorage.setItem('admin_remember', 'true');
+    try {
+      console.log('🔐 Starting sign in...');
+      
+      // Direct Supabase auth - simpler, avoids context race conditions
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('❌ Auth error:', error.message);
+        if (isMounted.current) {
+          setErrors({ 
+            email: '', 
+            password: '', 
+            general: error.message 
+          });
+          setIsLoading(false);
         }
-        localStorage.setItem('admin_token', 'mock_token_' + Date.now());
-        
-        // Redirect to course create page
-        router.push('/admin/courses/create');
-      } else {
-        setErrors({ ...errors, general: 'Invalid credentials. Please try again.' });
+        return;
+      }
+      
+      if (!data.user) {
+        console.error('❌ No user data');
+        if (isMounted.current) {
+          setErrors({ 
+            email: '', 
+            password: '', 
+            general: 'Authentication failed. Please try again.' 
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+      
+      console.log('✅ Auth successful, user ID:', data.user.id);
+
+      // Check user role immediately
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+      
+      if (profileError || !profile) {
+        console.error('❌ Error fetching profile:', profileError);
+        // Fallback or error? For security, maybe error out if we can't verify role?
+        // Let's assume safely that if we can't find a profile, something is wrong.
+        await supabase.auth.signOut();
+        if (isMounted.current) {
+           setErrors({ 
+            email: '', 
+            password: '', 
+            general: 'Error verifying user permissions. Please contact support.' 
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // Check if user has admin privileges
+      const isAdmin = profile.role === 'super_admin' || profile.role === 'admin' || profile.role === 'instructor';
+      
+      if (!isAdmin) {
+        console.warn('⛔ Non-admin user tried to access admin portal:', profile.role);
+        await supabase.auth.signOut();
+        if (isMounted.current) {
+           setErrors({ 
+            email: '', 
+            password: '', 
+            general: 'Access denied: You do not have administrator permissions.' 
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+      
+      console.log('✅ Role verified:', profile.role);
+      
+      // Store remember me preference
+      if (rememberMe) {
+        localStorage.setItem('admin_remember', 'true');
+      }
+      
+      // Set redirecting state and navigate
+      if (isMounted.current) {
+        setIsRedirecting(true);
+      }
+      
+      // Small delay to ensure session cookie is set
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Navigate using window.location for full page reload
+      window.location.href = '/admin/dashboard';
+      
+    } catch (error) {
+      console.error('❌ Sign in exception:', error);
+      if (isMounted.current) {
+        // Ignore AbortError during navigation
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        setErrors({ 
+          email: '', 
+          password: '', 
+          general: 'An unexpected error occurred. Please try again.' 
+        });
         setIsLoading(false);
       }
-    }, 1000);
+    }
   };
   
   const isFormValid = validateEmail(email) && validatePassword(password);
@@ -149,10 +249,10 @@ export default function AdminLoginPage() {
               variant="primary"
               size="lg"
               className="w-full"
-              disabled={!isFormValid}
-              isLoading={isLoading}
+              disabled={!isFormValid || isRedirecting}
+              isLoading={isLoading || isRedirecting}
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isRedirecting ? 'Redirecting...' : isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
           

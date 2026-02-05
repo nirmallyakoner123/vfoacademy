@@ -1,118 +1,137 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { LearnerLayout } from '@/components/learner/LearnerLayout';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { Button } from '@/components/ui/Button';
+import * as enrollmentService from '@/lib/services/enrollment.service';
+import { supabase } from '@/lib/supabase/client';
 
-// Mock data
-const learnerStats = {
-  coursesEnrolled: 5,
-  coursesCompleted: 2,
-  hoursLearned: 47,
-  currentStreak: 7,
-  certificates: 2,
-  averageScore: 85,
-};
+interface EnrolledCourse {
+  id: string;
+  course_id: string;
+  progress_percentage: number | null;
+  status: string | null;
+  last_accessed_at: string | null;
+  enrolled_at: string | null;
+  totalLessons: number;
+  completedLessons: number;
+  course: {
+    id: string;
+    title: string;
+    description: string | null;
+    thumbnail_url: string | null;
+    category: string | null;
+    level: string | null;
+    estimated_duration_hours: number | null;
+    weeks: Array<{
+      id: string;
+      title: string;
+      lessons: Array<{
+        id: string;
+        title: string;
+        type: string;
+      }>;
+    }>;
+  };
+}
 
-const continueWatching = [
-  {
-    id: 'course_1',
-    title: 'Python Fundamentals',
-    lesson: 'Working with Lists and Dictionaries',
-    week: 'Week 2',
-    progress: 65,
-    thumbnail: '/course-python.jpg',
-    duration: '12:34',
-    lastWatched: '2 hours ago',
-  },
-  {
-    id: 'course_2',
-    title: 'Web Development Bootcamp',
-    lesson: 'Introduction to CSS Grid',
-    week: 'Week 3',
-    progress: 42,
-    thumbnail: '/course-web.jpg',
-    duration: '18:22',
-    lastWatched: 'Yesterday',
-  },
-];
-
-const enrolledCourses = [
-  {
-    id: 'course_1',
-    title: 'Python Fundamentals',
-    instructor: 'Dr. Sarah Chen',
-    progress: 65,
-    totalLessons: 24,
-    completedLessons: 16,
-    thumbnail: '/course-python.jpg',
-    category: 'Programming',
-  },
-  {
-    id: 'course_2',
-    title: 'Web Development Bootcamp',
-    instructor: 'John Smith',
-    progress: 42,
-    totalLessons: 36,
-    completedLessons: 15,
-    thumbnail: '/course-web.jpg',
-    category: 'Web Development',
-  },
-  {
-    id: 'course_3',
-    title: 'Data Science Essentials',
-    instructor: 'Dr. Michael Brown',
-    progress: 18,
-    totalLessons: 28,
-    completedLessons: 5,
-    thumbnail: '/course-data.jpg',
-    category: 'Data Science',
-  },
-];
-
-const upcomingDeadlines = [
-  {
-    id: '1',
-    title: 'Python Quiz - Week 2',
-    course: 'Python Fundamentals',
-    type: 'quiz',
-    dueDate: new Date('2026-02-06'),
-    daysLeft: 2,
-  },
-  {
-    id: '2',
-    title: 'CSS Grid Assignment',
-    course: 'Web Development Bootcamp',
-    type: 'assignment',
-    dueDate: new Date('2026-02-10'),
-    daysLeft: 6,
-  },
-  {
-    id: '3',
-    title: 'Data Analysis Project',
-    course: 'Data Science Essentials',
-    type: 'project',
-    dueDate: new Date('2026-02-15'),
-    daysLeft: 11,
-  },
-];
-
-const achievements = [
-  { id: '1', icon: '🎯', title: 'First Course', description: 'Completed your first course' },
-  { id: '2', icon: '🔥', title: '7 Day Streak', description: 'Learned for 7 days in a row' },
-  { id: '3', icon: '⭐', title: 'Top Performer', description: 'Scored 90%+ on an assessment' },
-  { id: '4', icon: '📚', title: 'Bookworm', description: 'Completed 10 lessons' },
-];
+interface LearnerStats {
+  coursesEnrolled: number;
+  coursesCompleted: number;
+  coursesInProgress: number;
+  certificates: number;
+  averageProgress: number;
+}
 
 export default function LearnerDashboard() {
+  const [enrollments, setEnrollments] = useState<EnrolledCourse[]>([]);
+  const [stats, setStats] = useState<LearnerStats | null>(null);
+  const [userName, setUserName] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+
+        // Get user profile
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile?.full_name) {
+            setUserName(profile.full_name.split(' ')[0]); // First name only
+          }
+        }
+
+        // Get enrollments
+        const enrollmentsResult = await enrollmentService.getMyEnrollments();
+        if (enrollmentsResult.success && enrollmentsResult.data) {
+          setEnrollments(enrollmentsResult.data as EnrolledCourse[]);
+        }
+
+        // Get stats
+        const statsResult = await enrollmentService.getLearnerStats();
+        if (statsResult.success && statsResult.data) {
+          setStats(statsResult.data);
+        }
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   const greeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
   };
+
+  // Get courses in progress for "Continue Watching"
+  const continueWatching = enrollments
+    .filter(e => e.status === 'active' && (e.progress_percentage || 0) > 0 && (e.progress_percentage || 0) < 100)
+    .slice(0, 2);
+
+  // Get recent courses for "My Courses" section
+  const recentCourses = enrollments.slice(0, 3);
+
+  const formatLastAccessed = (dateString: string | null) => {
+    if (!dateString) return 'Not started';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffHours < 1) return 'Just now';
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffHours < 48) return 'Yesterday';
+    return `${Math.floor(diffHours / 24)} days ago`;
+  };
+
+  if (isLoading) {
+    return (
+      <LearnerLayout>
+        <div className="p-6 lg:p-8 flex items-center justify-center min-h-[60vh]">
+          <div className="flex items-center gap-3">
+            <svg className="animate-spin h-6 w-6 text-[var(--primary-navy)]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-[var(--gray-500)]">Loading your dashboard...</span>
+          </div>
+        </div>
+      </LearnerLayout>
+    );
+  }
 
   return (
     <LearnerLayout>
@@ -123,25 +142,29 @@ export default function LearnerDashboard() {
           <div className="absolute bottom-0 left-1/2 w-48 h-48 bg-white/5 rounded-full translate-y-1/2" />
           
           <div className="relative z-10">
-            <h1 className="text-3xl font-bold mb-2">{greeting()}, John! 👋</h1>
-            <p className="text-white/80 text-lg mb-6">Ready to continue your learning journey?</p>
+            <h1 className="text-3xl font-bold mb-2">{greeting()}, {userName || 'Learner'}!</h1>
+            <p className="text-white/80 text-lg mb-6">
+              {enrollments.length > 0 
+                ? 'Ready to continue your learning journey?' 
+                : 'Welcome! You have no courses enrolled yet.'}
+            </p>
             
             <div className="flex flex-wrap gap-6">
               <div className="bg-white/10 backdrop-blur-sm rounded-xl px-5 py-4">
-                <p className="text-3xl font-bold">{learnerStats.currentStreak}</p>
-                <p className="text-white/70 text-sm">Day Streak 🔥</p>
+                <p className="text-3xl font-bold">{stats?.coursesEnrolled || 0}</p>
+                <p className="text-white/70 text-sm">Courses Enrolled</p>
               </div>
               <div className="bg-white/10 backdrop-blur-sm rounded-xl px-5 py-4">
-                <p className="text-3xl font-bold">{learnerStats.hoursLearned}h</p>
-                <p className="text-white/70 text-sm">Hours Learned</p>
+                <p className="text-3xl font-bold">{stats?.coursesInProgress || 0}</p>
+                <p className="text-white/70 text-sm">In Progress</p>
               </div>
               <div className="bg-white/10 backdrop-blur-sm rounded-xl px-5 py-4">
-                <p className="text-3xl font-bold">{learnerStats.certificates}</p>
+                <p className="text-3xl font-bold">{stats?.coursesCompleted || 0}</p>
+                <p className="text-white/70 text-sm">Completed</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl px-5 py-4">
+                <p className="text-3xl font-bold">{stats?.certificates || 0}</p>
                 <p className="text-white/70 text-sm">Certificates</p>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl px-5 py-4">
-                <p className="text-3xl font-bold">{learnerStats.averageScore}%</p>
-                <p className="text-white/70 text-sm">Avg. Score</p>
               </div>
             </div>
           </div>
@@ -151,16 +174,16 @@ export default function LearnerDashboard() {
         {continueWatching.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-semibold text-[var(--foreground)]">Continue Watching</h2>
+              <h2 className="text-xl font-semibold text-[var(--foreground)]">Continue Learning</h2>
               <Link href="/courses" className="text-sm text-[var(--primary-navy)] hover:underline font-medium">
                 View All
               </Link>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {continueWatching.map((item) => (
+              {continueWatching.map((enrollment) => (
                 <Link
-                  key={item.id}
-                  href={`/courses/${item.id}`}
+                  key={enrollment.id}
+                  href={`/courses/${enrollment.course_id}`}
                   className="bg-white rounded-xl border border-[var(--gray-200)] overflow-hidden hover:shadow-lg hover:border-[var(--primary-navy-light)] transition-all group"
                 >
                   <div className="flex">
@@ -172,21 +195,20 @@ export default function LearnerDashboard() {
                           </svg>
                         </div>
                       </div>
-                      <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                        {item.duration}
-                      </div>
                     </div>
                     <div className="flex-1 p-5">
-                      <p className="text-xs text-[var(--gray-500)] mb-1">{item.week}</p>
-                      <h3 className="font-semibold text-[var(--foreground)] mb-1 group-hover:text-[var(--primary-navy)] transition-colors">
-                        {item.lesson}
+                      <p className="text-xs text-[var(--gray-500)] mb-1">{enrollment.course?.category || 'General'}</p>
+                      <h3 className="font-semibold text-[var(--foreground)] mb-1 group-hover:text-[var(--primary-navy)] transition-colors line-clamp-1">
+                        {enrollment.course?.title}
                       </h3>
-                      <p className="text-sm text-[var(--gray-500)] mb-3">{item.title}</p>
+                      <p className="text-sm text-[var(--gray-500)] mb-3">
+                        {enrollment.completedLessons}/{enrollment.totalLessons} lessons completed
+                      </p>
                       <div className="flex items-center justify-between">
-                        <ProgressBar value={item.progress} size="sm" variant="primary" className="flex-1 mr-4" />
-                        <span className="text-sm font-medium text-[var(--gray-600)]">{item.progress}%</span>
+                        <ProgressBar value={enrollment.progress_percentage || 0} size="sm" variant="primary" className="flex-1 mr-4" />
+                        <span className="text-sm font-medium text-[var(--gray-600)]">{enrollment.progress_percentage || 0}%</span>
                       </div>
-                      <p className="text-xs text-[var(--gray-400)] mt-2">{item.lastWatched}</p>
+                      <p className="text-xs text-[var(--gray-400)] mt-2">{formatLastAccessed(enrollment.last_accessed_at)}</p>
                     </div>
                   </div>
                 </Link>
@@ -202,159 +224,146 @@ export default function LearnerDashboard() {
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-xl font-semibold text-[var(--foreground)]">My Courses</h2>
               <Link href="/courses" className="text-sm text-[var(--primary-navy)] hover:underline font-medium">
-                View All ({learnerStats.coursesEnrolled})
+                View All ({stats?.coursesEnrolled || 0})
               </Link>
             </div>
-            <div className="space-y-4">
-              {enrolledCourses.map((course) => (
-                <Link
-                  key={course.id}
-                  href={`/courses/${course.id}`}
-                  className="block bg-white rounded-xl border border-[var(--gray-200)] p-5 hover:shadow-md hover:border-[var(--primary-navy-light)] transition-all"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-20 h-20 bg-gradient-to-br from-[var(--gold-accent)] to-[var(--gold-accent-dark)] rounded-xl flex-shrink-0 flex items-center justify-center">
-                      <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <span className="text-xs font-medium text-[var(--primary-navy)] bg-blue-50 px-2 py-1 rounded-full">
-                            {course.category}
-                          </span>
-                          <h3 className="font-semibold text-[var(--foreground)] mt-2">{course.title}</h3>
-                          <p className="text-sm text-[var(--gray-500)]">{course.instructor}</p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-2xl font-bold text-[var(--primary-navy)]">{course.progress}%</p>
-                          <p className="text-xs text-[var(--gray-500)]">
-                            {course.completedLessons}/{course.totalLessons} lessons
-                          </p>
-                        </div>
+            
+            {recentCourses.length === 0 ? (
+              <div className="bg-white rounded-xl border border-[var(--gray-200)] p-12 text-center">
+                <svg className="w-16 h-16 mx-auto mb-4 text-[var(--gray-300)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">No courses yet</h3>
+                <p className="text-[var(--gray-500)]">
+                  You haven't been enrolled in any courses yet. Contact your administrator to get started.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {recentCourses.map((enrollment) => (
+                  <Link
+                    key={enrollment.id}
+                    href={`/courses/${enrollment.course_id}`}
+                    className="block bg-white rounded-xl border border-[var(--gray-200)] p-5 hover:shadow-md hover:border-[var(--primary-navy-light)] transition-all"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-20 h-20 bg-gradient-to-br from-[var(--gold-accent)] to-[var(--gold-accent-dark)] rounded-xl flex-shrink-0 flex items-center justify-center">
+                        <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
                       </div>
-                      <ProgressBar
-                        value={course.progress}
-                        variant={course.progress === 100 ? 'success' : 'primary'}
-                        size="md"
-                        className="mt-4"
-                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <span className="text-xs font-medium text-[var(--primary-navy)] bg-blue-50 px-2 py-1 rounded-full">
+                              {enrollment.course?.category || 'General'}
+                            </span>
+                            <h3 className="font-semibold text-[var(--foreground)] mt-2">{enrollment.course?.title}</h3>
+                            <p className="text-sm text-[var(--gray-500)]">{enrollment.course?.level || 'All Levels'}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-2xl font-bold text-[var(--primary-navy)]">{enrollment.progress_percentage || 0}%</p>
+                            <p className="text-xs text-[var(--gray-500)]">
+                              {enrollment.completedLessons}/{enrollment.totalLessons} lessons
+                            </p>
+                          </div>
+                        </div>
+                        <ProgressBar
+                          value={enrollment.progress_percentage || 0}
+                          variant={enrollment.status === 'completed' ? 'success' : 'primary'}
+                          size="md"
+                          className="mt-4"
+                        />
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-            <Button variant="outline" className="w-full mt-4">
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              Browse More Courses
-            </Button>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right Sidebar */}
           <div className="space-y-6">
-            {/* Upcoming Deadlines */}
-            <div className="bg-white rounded-xl border border-[var(--gray-200)] overflow-hidden">
-              <div className="px-5 py-4 border-b border-[var(--gray-200)]">
-                <h3 className="font-semibold text-[var(--foreground)]">Upcoming Deadlines</h3>
-              </div>
-              <div className="p-4 space-y-3">
-                {upcomingDeadlines.map((deadline) => (
-                  <div
-                    key={deadline.id}
-                    className="flex items-start gap-3 p-3 rounded-xl hover:bg-[var(--gray-50)] transition-colors"
-                  >
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        deadline.type === 'quiz'
-                          ? 'bg-blue-100 text-blue-600'
-                          : deadline.type === 'assignment'
-                          ? 'bg-amber-100 text-amber-600'
-                          : 'bg-purple-100 text-purple-600'
-                      }`}
-                    >
-                      {deadline.type === 'quiz' ? (
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      ) : deadline.type === 'assignment' ? (
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-[var(--foreground)] truncate">{deadline.title}</p>
-                      <p className="text-xs text-[var(--gray-500)]">{deadline.course}</p>
-                      <p
-                        className={`text-xs font-medium mt-1 ${
-                          deadline.daysLeft <= 2 ? 'text-[var(--error)]' : 'text-[var(--gray-500)]'
-                        }`}
-                      >
-                        {deadline.daysLeft === 0
-                          ? 'Due today!'
-                          : deadline.daysLeft === 1
-                          ? 'Due tomorrow'
-                          : `${deadline.daysLeft} days left`}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Achievements */}
-            <div className="bg-white rounded-xl border border-[var(--gray-200)] overflow-hidden">
-              <div className="px-5 py-4 border-b border-[var(--gray-200)] flex items-center justify-between">
-                <h3 className="font-semibold text-[var(--foreground)]">Recent Achievements</h3>
-                <Link href="/achievements" className="text-sm text-[var(--primary-navy)] hover:underline">
-                  View All
-                </Link>
-              </div>
-              <div className="p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {achievements.map((achievement) => (
-                    <div
-                      key={achievement.id}
-                      className="p-3 rounded-xl bg-[var(--gray-50)] hover:bg-[var(--gray-100)] transition-colors text-center"
-                    >
-                      <span className="text-2xl">{achievement.icon}</span>
-                      <p className="text-xs font-medium text-[var(--foreground)] mt-1">{achievement.title}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {/* Quick Stats */}
             <div className="bg-gradient-to-br from-[var(--gold-accent)] to-[var(--gold-accent-dark)] rounded-xl p-5 text-white">
-              <h3 className="font-semibold mb-4">Your Progress This Week</h3>
+              <h3 className="font-semibold mb-4">Your Progress</h3>
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>Lessons Completed</span>
-                    <span className="font-semibold">8/10</span>
+                    <span>Courses Completed</span>
+                    <span className="font-semibold">{stats?.coursesCompleted || 0}/{stats?.coursesEnrolled || 0}</span>
                   </div>
                   <div className="h-2 bg-white/30 rounded-full overflow-hidden">
-                    <div className="h-full bg-white rounded-full" style={{ width: '80%' }} />
+                    <div 
+                      className="h-full bg-white rounded-full" 
+                      style={{ 
+                        width: `${stats?.coursesEnrolled ? (stats.coursesCompleted / stats.coursesEnrolled) * 100 : 0}%` 
+                      }} 
+                    />
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span>Weekly Goal</span>
-                    <span className="font-semibold">5h / 7h</span>
+                    <span>Average Progress</span>
+                    <span className="font-semibold">{stats?.averageProgress || 0}%</span>
                   </div>
                   <div className="h-2 bg-white/30 rounded-full overflow-hidden">
-                    <div className="h-full bg-white rounded-full" style={{ width: '71%' }} />
+                    <div 
+                      className="h-full bg-white rounded-full" 
+                      style={{ width: `${stats?.averageProgress || 0}%` }} 
+                    />
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Certificates */}
+            <div className="bg-white rounded-xl border border-[var(--gray-200)] overflow-hidden">
+              <div className="px-5 py-4 border-b border-[var(--gray-200)] flex items-center justify-between">
+                <h3 className="font-semibold text-[var(--foreground)]">Certificates</h3>
+                <Link href="/certificates" className="text-sm text-[var(--primary-navy)] hover:underline">
+                  View All
+                </Link>
+              </div>
+              <div className="p-5">
+                {(stats?.certificates || 0) > 0 ? (
+                  <div className="text-center">
+                    <div className="w-16 h-16 mx-auto mb-3 bg-green-100 rounded-full flex items-center justify-center">
+                      <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                      </svg>
+                    </div>
+                    <p className="text-2xl font-bold text-[var(--foreground)]">{stats?.certificates}</p>
+                    <p className="text-sm text-[var(--gray-500)]">Certificate{stats?.certificates !== 1 ? 's' : ''} Earned</p>
+                  </div>
+                ) : (
+                  <div className="text-center py-4">
+                    <div className="w-12 h-12 mx-auto mb-3 bg-[var(--gray-100)] rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6 text-[var(--gray-400)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm text-[var(--gray-500)]">Complete courses to earn certificates</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Help Card */}
+            <div className="bg-white rounded-xl border border-[var(--gray-200)] p-5">
+              <h3 className="font-semibold text-[var(--foreground)] mb-2">Need Help?</h3>
+              <p className="text-sm text-[var(--gray-500)] mb-4">
+                Having trouble with your courses? Contact support for assistance.
+              </p>
+              <Link
+                href="/help"
+                className="inline-flex items-center gap-2 text-sm text-[var(--primary-navy)] hover:underline font-medium"
+              >
+                Get Support
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
             </div>
           </div>
         </div>

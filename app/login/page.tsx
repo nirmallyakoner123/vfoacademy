@@ -1,20 +1,27 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { validateEmail, validatePassword } from '@/lib/validation';
+import { supabase } from '@/lib/supabase/client';
 
 export default function LearnerLoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState({ email: '', password: '', general: '' });
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const isMounted = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,20 +45,109 @@ export default function LearnerLoginPage() {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      if (email && password) {
-        if (rememberMe) {
-          localStorage.setItem('learner_remember', 'true');
-        }
-        localStorage.setItem('learner_token', 'mock_learner_token_' + Date.now());
-        localStorage.setItem('user_role', 'learner');
+    try {
+      // Direct Supabase auth - simpler, avoids context race conditions
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-        router.push('/dashboard');
-      } else {
-        setErrors({ ...errors, general: 'Invalid credentials. Please try again.' });
+      if (error) {
+        if (isMounted.current) {
+          setErrors({ 
+            email: '', 
+            password: '', 
+            general: error.message 
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (!data.user) {
+        if (isMounted.current) {
+          setErrors({ 
+            email: '', 
+            password: '', 
+            general: 'Authentication failed. Please try again.' 
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // Check user role immediately
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+      
+      if (profileError || !profile) {
+         // If no profile, we can't verify. But for learners, sometimes profile creation lags?
+         // However, in our robust internal system, profile should exist.
+         // Safest to deny if we can't confirm role.
+         console.error('❌ Error fetching profile:', profileError);
+         await supabase.auth.signOut();
+         if (isMounted.current) {
+            setErrors({ 
+             email: '', 
+             password: '', 
+             general: 'Error verifying account details. Please contact support.' 
+           });
+           setIsLoading(false);
+         }
+         return;
+       }
+
+      // Check if user is a learner
+      // Strict check: if they have an admin role, deny access
+      const isAdmin = profile.role === 'super_admin' || profile.role === 'admin' || profile.role === 'instructor';
+      
+      if (isAdmin) {
+        console.warn('⛔ Admin user tried to access learner portal:', profile.role);
+        await supabase.auth.signOut();
+        if (isMounted.current) {
+           setErrors({ 
+            email: '', 
+            password: '', 
+            general: 'Access denied: Administrators must use the Admin Portal.' 
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+      
+      // Store remember me preference
+      if (rememberMe) {
+        localStorage.setItem('learner_remember', 'true');
+      }
+
+      // Set redirecting state and navigate
+      if (isMounted.current) {
+        setIsRedirecting(true);
+      }
+
+      // Small delay to ensure session cookie is set
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Navigate using window.location for full page reload
+      window.location.href = '/dashboard';
+
+    } catch (error) {
+      if (isMounted.current) {
+        // Ignore AbortError during navigation
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
+        setErrors({ 
+          email: '', 
+          password: '', 
+          general: 'An unexpected error occurred. Please try again.' 
+        });
         setIsLoading(false);
       }
-    }, 1000);
+    }
   };
 
   const isFormValid = validateEmail(email) && validatePassword(password);
@@ -211,10 +307,10 @@ export default function LearnerLoginPage() {
                 variant="primary"
                 size="lg"
                 className="w-full"
-                disabled={!isFormValid}
-                isLoading={isLoading}
+                disabled={!isFormValid || isRedirecting}
+                isLoading={isLoading || isRedirecting}
               >
-                {isLoading ? 'Signing in...' : 'Sign In'}
+                {isRedirecting ? 'Redirecting...' : isLoading ? 'Signing in...' : 'Sign In'}
               </Button>
             </form>
 

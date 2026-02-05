@@ -1,88 +1,103 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { AddUserModal } from '@/components/admin/AddUserModal';
+import { supabase } from '@/lib/supabase/client';
+import type { Database } from '@/types/database';
 
-// Mock Data
-const MOCK_USERS = [
-  {
-    id: 1,
-    name: 'Admin User',
-    email: 'admin@vfo.com',
-    role: 'Admin',
-    status: 'Active',
-    joinedDate: '01/15/2026',
-    lastActive: 'Now',
-    avatar: 'AU'
-  },
-  {
-    id: 2,
-    name: 'Sarah Johnson',
-    email: 'sarah.j@example.com',
-    role: 'Learner',
-    status: 'Active',
-    joinedDate: '02/01/2026',
-    lastActive: '2 hours ago',
-    avatar: 'SJ'
-  },
-  {
-    id: 3,
-    name: 'Michael Chen',
-    email: 'm.chen@example.com',
-    role: 'Learner',
-    status: 'Inactive',
-    joinedDate: '01/20/2026',
-    lastActive: '5 days ago',
-    avatar: 'MC'
-  },
-  {
-    id: 4,
-    name: 'David Smith',
-    email: 'david.s@example.com',
-    role: 'Learner',
-    status: 'Active',
-    joinedDate: '01/28/2026',
-    lastActive: '1 day ago',
-    avatar: 'DS'
-  },
-  {
-    id: 5,
-    name: 'Emily Davis',
-    email: 'emily.d@example.com',
-    role: 'Learner',
-    status: 'Active',
-    joinedDate: '02/03/2026',
-    lastActive: '30 mins ago',
-    avatar: 'ED'
-  }
-];
+type Profile = Database['public']['Tables']['profiles']['Row'];
 
 export default function UsersPage() {
-  const [users, setUsers] = useState(MOCK_USERS);
+  const [users, setUsers] = useState<Profile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('All');
 
+  useEffect(() => {
+    let isMounted = true;
+    
+    const fetchUsers = async () => {
+      try {
+        setIsLoading(true);
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!isMounted) return;
+
+        if (error) {
+          console.error('Error fetching users:', error);
+        } else if (data) {
+          setUsers(data);
+        }
+      } catch (err) {
+        if (!isMounted) return;
+        console.error('Unexpected error fetching users:', err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchUsers();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const filteredUsers = users.filter(user => {
+    const role = user.role || 'learner';
     const matchesTab = activeTab === 'All' || 
-                       (activeTab === 'Admins' && user.role === 'Admin') || 
-                       (activeTab === 'Employees' && user.role === 'Learner');
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          user.email.toLowerCase().includes(searchQuery.toLowerCase());
+                       (activeTab === 'Admins' && (role === 'admin' || role === 'super_admin' || role === 'instructor')) || 
+                       (activeTab === 'Employees' && role === 'learner');
+    
+    // Safety check for null strings
+    const name = user.full_name || '';
+    const email = user.email || '';
+    
+    const matchesSearch = name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          email.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
 
-  const handleAddUser = (newUser: { name: string; email: string; role: string; status: string; joinedDate: string; lastActive: string }) => {
-    const user = {
-      id: users.length + 1,
-      ...newUser,
-      avatar: newUser.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().substring(0, 2)
-    };
-    setUsers([user, ...users]);
+  const handleAddUser = async () => {
+    // Refetch users after adding
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setUsers(data);
+      }
+    } catch (err) {
+      console.error('Error refetching users:', err);
+    }
+  };
+
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map(n => n[0])
+      .join('')
+      .toUpperCase()
+      .substring(0, 2);
+  };
+
+  // Helper to format date
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
   };
 
   return (
@@ -146,57 +161,59 @@ export default function UsersPage() {
                 <th className="px-6 py-4 text-left text-xs font-semibold text-[var(--gray-500)] uppercase tracking-wider">Role</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-[var(--gray-500)] uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-[var(--gray-500)] uppercase tracking-wider">Joined</th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-[var(--gray-500)] uppercase tracking-wider">Last Active</th>
-                <th className="px-6 py-4 text-right text-xs font-semibold text-[var(--gray-500)] uppercase tracking-wider">Actions</th>
+                {/* <th className="px-6 py-4 text-right text-xs font-semibold text-[var(--gray-500)] uppercase tracking-wider">Actions</th> */}
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--gray-200)] bg-white">
-              {filteredUsers.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-[var(--gray-500)]">
+                    Loading users...
+                  </td>
+                </tr>
+              ) : filteredUsers.length > 0 ? (
                 filteredUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-[var(--gray-50)] transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-[var(--primary-navy)] text-white flex items-center justify-center font-bold text-sm">
-                          {user.avatar}
+                        <div className="w-10 h-10 rounded-full bg-[var(--primary-navy)] text-white flex items-center justify-center font-bold text-sm uppercase">
+                          {getInitials(user.full_name || 'U')}
                         </div>
                         <div>
-                          <div className="font-semibold text-[var(--foreground)]">{user.name}</div>
+                          <div className="font-semibold text-[var(--foreground)]">{user.full_name || 'Unknown'}</div>
                           <div className="text-sm text-[var(--gray-500)]">{user.email}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`
-                        inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border
-                        ${user.role === 'Admin' 
+                        inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border capitalize
+                        ${user.role === 'admin' || user.role === 'super_admin'
                           ? 'bg-purple-50 text-purple-700 border-purple-200' 
                           : 'bg-blue-50 text-blue-700 border-blue-200'
                         }
                       `}>
-                        {user.role === 'Learner' ? 'Employee' : 'Admin'}
+                        {user.role?.replace('_', ' ') || 'Learner'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge variant={user.status === 'Active' ? 'success' : 'draft'}>
-                        {user.status}
+                      <Badge variant={user.is_active ? 'success' : 'draft'}>
+                        {user.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--gray-500)]">
-                      {user.joinedDate}
+                      {formatDate(user.created_at)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--gray-500)]">
-                      {user.lastActive}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    {/* <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button className="text-[var(--primary-navy)] hover:text-[var(--primary-navy-light)] font-medium">
                         Edit
                       </button>
-                    </td>
+                    </td> */}
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-[var(--gray-500)]">
+                  <td colSpan={5} className="px-6 py-12 text-center text-[var(--gray-500)]">
                     No users found matching your criteria.
                   </td>
                 </tr>

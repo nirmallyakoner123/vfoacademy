@@ -33,6 +33,7 @@ export interface Question {
   description: string;
   options: AnswerOption[];
   explanation?: string; // Explanation shown after answering
+  isActive?: boolean; // Whether this question is active/included in the assessment
 }
 
 // Assessment/Test Configuration
@@ -55,11 +56,10 @@ export interface AssessmentConfig {
     rightClickAllowed: boolean;
     printAllowed: boolean;
     devToolsAllowed: boolean;
-    tabSwitchLimit?: number; // null for unlimited
+    tabSwitchingAllowed: boolean;
+    tabSwitchLimit?: number; // max switches allowed, undefined for unlimited
   };
-  // External test platform integration
-  externalTestId?: string; // ID from 3rd party platform
-  externalTestUrl?: string;
+  // Questions stored directly in the assessment (week-based approach)
   questions: Question[];
   totalMarks: number;
   evaluationDuration?: number; // minutes for manual evaluation

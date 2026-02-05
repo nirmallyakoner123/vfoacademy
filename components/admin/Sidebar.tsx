@@ -9,6 +9,7 @@ const menuItems = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: 'dashboard' },
   { name: 'Courses', href: '/admin/courses', icon: 'courses' },
   { name: 'Users', href: '/admin/users', icon: 'users' },
+  { name: 'Enrollments', href: '/admin/enrollments', icon: 'enrollments' },
   { name: 'Assessments', href: '/admin/assessments', icon: 'assessments' },
   { name: 'Reports', href: '/admin/reports', icon: 'reports' },
 ];
@@ -27,6 +28,11 @@ const icons = {
   users: (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+    </svg>
+  ),
+  enrollments: (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
     </svg>
   ),
   assessments: (
@@ -93,8 +99,21 @@ export const Sidebar: React.FC = () => {
       </nav>
       
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-[var(--primary-navy-light)]">
-        <p className="text-xs text-[var(--gold-accent-light)]">© 2026 Virtual Film Office</p>
+      <div className="px-6 py-4 border-t border-[var(--primary-navy-light)] space-y-4">
+        <button 
+          onClick={async () => {
+            const { signOut } = await import('@/lib/services/auth.service');
+            await signOut();
+            window.location.href = '/admin/login';
+          }}
+          className="flex items-center gap-3 text-white/70 hover:text-white hover:bg-[var(--primary-navy-light)] px-4 py-2 rounded-lg w-full transition-all duration-200 group"
+        >
+          <svg className="w-5 h-5 group-hover:text-[var(--gold-accent)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          <span>Sign Out</span>
+        </button>
+        <p className="text-xs text-[var(--gold-accent-light)] text-center">© 2026 Virtual Film Office</p>
       </div>
     </aside>
   );

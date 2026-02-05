@@ -53,12 +53,12 @@ export const Modal: React.FC<ModalProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+        className="fixed inset-0 bg-black/50 transition-opacity"
         onClick={onClose}
       />
       
-      {/* Modal */}
-      <div className="flex min-h-full items-center justify-center p-4">
+      {/* Modal - relative to content, ensure it sits above backdrop */}
+      <div className="flex min-h-full items-center justify-center p-4 relative z-10">
         <div
           className={`
             relative bg-white rounded-lg shadow-xl w-full ${sizeStyles[size]}

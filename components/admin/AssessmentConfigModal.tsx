@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import { AssessmentConfig } from '@/types/course';
+import { AssessmentConfig, Question } from '@/types/course';
 
 interface AssessmentConfigModalProps {
   isOpen: boolean;
@@ -14,6 +14,31 @@ interface AssessmentConfigModalProps {
   initialConfig?: AssessmentConfig;
   weekTitle: string;
 }
+
+const getDefaultConfig = (): Partial<AssessmentConfig> => ({
+  title: '',
+  description: '',
+  type: 'quiz',
+  timeLimit: 60,
+  maxAttempts: 1,
+  passingScore: 70,
+  shuffleQuestions: false,
+  shuffleOptions: false,
+  showResults: 'immediately',
+  showCorrectAnswers: true,
+  proctoring: {
+    enabled: false,
+    copyPasteAllowed: true,
+    rightClickAllowed: true,
+    printAllowed: true,
+    devToolsAllowed: true,
+    tabSwitchingAllowed: true,
+    tabSwitchLimit: undefined,
+  },
+  questions: [],
+  totalMarks: 0,
+  evaluationDuration: 60,
+});
 
 export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
   isOpen,
@@ -25,38 +50,73 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
   // weekTitle will be used for assessment naming suggestions
   void weekTitle;
   const [config, setConfig] = useState<Partial<AssessmentConfig>>(
-    initialConfig || {
-      title: '',
-      description: '',
-      type: 'quiz',
-      timeLimit: 60,
-      maxAttempts: 1,
-      passingScore: 70,
-      shuffleQuestions: false,
-      shuffleOptions: false,
-      showResults: 'immediately',
-      showCorrectAnswers: true,
-      proctoring: {
-        enabled: false,
-        copyPasteAllowed: true,
-        rightClickAllowed: true,
-        printAllowed: true,
-        devToolsAllowed: true,
-        tabSwitchLimit: undefined,
-      },
-      questions: [],
-      totalMarks: 0,
-      evaluationDuration: 60,
-    }
+    initialConfig || getDefaultConfig()
   );
 
   const [activeTab, setActiveTab] = useState<'basic' | 'security' | 'questions'>('basic');
+  
+  // Track selected question IDs for the assessment
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<Set<string>>(new Set());
+
+  // Update config when initialConfig changes (e.g., when modal opens with different lesson)
+  useEffect(() => {
+    if (isOpen) {
+      const newConfig = initialConfig || getDefaultConfig();
+      setConfig(newConfig);
+      setActiveTab('basic');
+      // Initialize selected questions based on isActive status
+      // If isActive is not set, default to selected (true)
+      if (newConfig.questions && newConfig.questions.length > 0) {
+        const activeQuestionIds = newConfig.questions
+          .filter(q => q.isActive !== false) // Include if isActive is true or undefined
+          .map(q => q.id);
+        setSelectedQuestionIds(new Set(activeQuestionIds));
+      } else {
+        setSelectedQuestionIds(new Set());
+      }
+    }
+  }, [isOpen, initialConfig]);
+  
+  // Toggle question selection
+  const toggleQuestionSelection = (questionId: string) => {
+    setSelectedQuestionIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(questionId)) {
+        newSet.delete(questionId);
+      } else {
+        newSet.add(questionId);
+      }
+      return newSet;
+    });
+  };
+  
+  // Select/Deselect all questions
+  const toggleAllQuestions = () => {
+    if (config.questions) {
+      if (selectedQuestionIds.size === config.questions.length) {
+        // Deselect all
+        setSelectedQuestionIds(new Set());
+      } else {
+        // Select all
+        setSelectedQuestionIds(new Set(config.questions.map(q => q.id)));
+      }
+    }
+  };
+  
+  // Calculate total marks for selected questions
+  const selectedTotalMarks = config.questions
+    ?.filter(q => selectedQuestionIds.has(q.id))
+    .reduce((sum, q) => sum + (q.marks || 0), 0) || 0;
 
   const handleSave = () => {
     if (!config.title?.trim()) {
       alert('Please enter a test title');
       return;
     }
+
+    // Filter questions to only include selected ones
+    const selectedQuestions = config.questions?.filter(q => selectedQuestionIds.has(q.id)) || [];
+    const totalMarks = selectedQuestions.reduce((sum, q) => sum + (q.marks || 0), 0);
 
     const fullConfig: AssessmentConfig = {
       id: initialConfig?.id || 'assessment_' + Date.now(),
@@ -76,16 +136,17 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
         rightClickAllowed: true,
         printAllowed: true,
         devToolsAllowed: true,
+        tabSwitchingAllowed: true,
+        tabSwitchLimit: undefined,
       },
-      externalTestId: config.externalTestId,
-      externalTestUrl: config.externalTestUrl,
-      questions: config.questions || [],
-      totalMarks: config.totalMarks || 0,
+      questions: selectedQuestions,
+      totalMarks: totalMarks,
       evaluationDuration: config.evaluationDuration,
       aiVoice: config.aiVoice,
       ogImage: config.ogImage,
     };
 
+    console.log('[AssessmentConfigModal] Saving with selected questions:', selectedQuestions.length);
     onSave(fullConfig);
     onClose();
   };
@@ -98,8 +159,8 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
 
   const showResultsOptions = [
     { value: 'immediately', label: 'Immediately after submission' },
-    { value: 'after-submission', label: 'After all submissions' },
-    { value: 'after-due-date', label: 'After due date' },
+    { value: 'after_submission', label: 'After all submissions' },
+    { value: 'after_due_date', label: 'After due date' },
     { value: 'never', label: 'Never (manual review only)' },
   ];
 
@@ -378,9 +439,9 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
             {/* Summary Stats */}
             <div className="grid grid-cols-4 gap-4">
               {[
-                { label: 'Questions', value: config.questions?.length || 0, icon: '✓' },
+                { label: 'Selected', value: `${selectedQuestionIds.size}/${config.questions?.length || 0}`, icon: '✓' },
                 { label: 'Test Duration', value: `${config.timeLimit || 0}m`, icon: '⏱' },
-                { label: 'Marks', value: config.totalMarks || 0, icon: '✓' },
+                { label: 'Total Marks', value: selectedTotalMarks, icon: '✓' },
                 { label: 'Evaluation', value: `${config.evaluationDuration || 60}m`, icon: '⏱' },
               ].map((stat) => (
                 <div key={stat.label} className="bg-[var(--gray-50)] rounded-xl p-4">
@@ -390,49 +451,22 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
               ))}
             </div>
 
-            {/* External Test Integration */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-[var(--foreground)] mb-1">External Test Platform Integration</h4>
-                  <p className="text-sm text-[var(--gray-600)] mb-4">
-                    Connect to your external question bank or test platform to import questions.
-                  </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <Input
-                      label="External Test ID"
-                      placeholder="Enter test ID from external platform"
-                      value={config.externalTestId || ''}
-                      onChange={(e) => setConfig({ ...config, externalTestId: e.target.value })}
-                    />
-                    <Input
-                      label="External Test URL"
-                      placeholder="https://..."
-                      value={config.externalTestUrl || ''}
-                      onChange={(e) => setConfig({ ...config, externalTestUrl: e.target.value })}
-                    />
-                  </div>
-                  <Button variant="outline" size="sm" className="mt-4">
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Import Questions from Platform
-                  </Button>
-                </div>
-              </div>
-            </div>
-
             {/* Questions List */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h4 className="font-semibold text-[var(--foreground)]">Questions</h4>
+                <div className="flex items-center gap-3">
+                  <h4 className="font-semibold text-[var(--foreground)]">Questions</h4>
+                  {config.questions && config.questions.length > 0 && (
+                    <button
+                      onClick={toggleAllQuestions}
+                      className="text-xs text-[var(--primary-navy)] hover:underline"
+                    >
+                      {selectedQuestionIds.size === config.questions.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  )}
+                </div>
                 <span className="text-sm text-[var(--gray-500)]">
-                  {config.questions?.length || 0} questions selected
+                  {selectedQuestionIds.size} of {config.questions?.length || 0} questions selected
                 </span>
               </div>
               
@@ -442,36 +476,61 @@ export const AssessmentConfigModal: React.FC<AssessmentConfigModalProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="text-[var(--gray-500)] mb-4">No questions added yet</p>
-                  <div className="flex justify-center gap-3">
-                    <Button variant="primary" size="sm">
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Question
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      Import from Bank
-                    </Button>
-                  </div>
+                  <p className="text-xs text-[var(--gray-400)]">
+                    Add questions from the Properties Panel on the right
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {config.questions.map((question) => (
-                    <div key={question.id} className="bg-white border border-[var(--gray-200)] rounded-xl p-4">
-                      <div className="flex items-start gap-3">
-                        <input type="checkbox" className="mt-1 w-4 h-4 rounded border-[var(--gray-300)]" />
-                        <div className="flex-1">
-                          <p className="font-medium text-[var(--foreground)]">{question.title}</p>
-                          <p className="text-sm text-[var(--gray-500)] mt-1">{question.description}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xs bg-[var(--gray-100)] px-2 py-1 rounded">{question.type}</span>
-                            <span className="text-xs bg-[var(--gray-100)] px-2 py-1 rounded">{question.difficulty}</span>
-                            <span className="text-xs bg-[var(--gray-100)] px-2 py-1 rounded">{question.marks}pts</span>
+                  {config.questions.map((question) => {
+                    const isSelected = selectedQuestionIds.has(question.id);
+                    return (
+                      <div 
+                        key={question.id} 
+                        className={`bg-white border rounded-xl p-4 cursor-pointer transition-all ${
+                          isSelected 
+                            ? 'border-[var(--primary-navy)] ring-1 ring-[var(--primary-navy)]' 
+                            : 'border-[var(--gray-200)] hover:border-[var(--gray-300)]'
+                        }`}
+                        onClick={() => toggleQuestionSelection(question.id)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => toggleQuestionSelection(question.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-1 w-4 h-4 rounded border-[var(--gray-300)] text-[var(--primary-navy)] focus:ring-[var(--primary-navy)]" 
+                          />
+                          <div className="flex-1">
+                            <p className={`font-medium ${isSelected ? 'text-[var(--foreground)]' : 'text-[var(--gray-500)]'}`}>
+                              {question.title}
+                            </p>
+                            <p className="text-sm text-[var(--gray-500)] mt-1">{question.description}</p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-xs bg-[var(--gray-100)] px-2 py-1 rounded">{question.type}</span>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                question.difficulty === 'Easy' || question.difficulty === 'easy' 
+                                  ? 'bg-green-100 text-green-700' 
+                                  : question.difficulty === 'Medium' || question.difficulty === 'medium'
+                                  ? 'bg-yellow-100 text-yellow-700'
+                                  : 'bg-red-100 text-red-700'
+                              }`}>{question.difficulty}</span>
+                              <span className="text-xs bg-[var(--primary-navy)] text-white px-2 py-1 rounded">{question.marks}pts</span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
+                </div>
+              )}
+              
+              {config.questions && config.questions.length > 0 && selectedQuestionIds.size === 0 && (
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-700">
+                    <strong>Warning:</strong> No questions are selected. The assessment will have no questions.
+                  </p>
                 </div>
               )}
             </div>
